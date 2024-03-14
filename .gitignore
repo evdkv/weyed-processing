@@ -165,3 +165,4 @@ full_videos/
 results/
 processed/
 external/
+.DS_Store
