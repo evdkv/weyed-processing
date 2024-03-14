@@ -163,3 +163,4 @@ cython_debug/
 dots/
 full_videos/
 resutls/
+processed/
