@@ -162,6 +162,6 @@ cython_debug/
 # Other
 dots/
 full_videos/
-resutls/
+results/
 processed/
 external/
