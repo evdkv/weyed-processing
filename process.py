@@ -1,29 +1,15 @@
-from moviepy.editor import VideoFileClip
-import cv2, json, os, requests, subprocess
+'''
+File containing the main function 
+to process the raw data.
+'''
 
-
-def retrieve_data():
-    headers = {
-        'accept': 'application/json',
-        'Authorization': 'Bearer ' + os.getenv('JATOS_API_TOKEN'),
-    }
-
-    params = {
-        "studyId": "1",
-        "studyResultId": "40",
-    }
-
-    response = requests.post('https://jatos.robbins-lab.com/jatos/api/v1/results', headers=headers, params=params)
-
-    with open('40.jrzip', 'wb') as f:
-        f.write(response.content)
+from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
+import cv2, json, os, subprocess
 
 def main():
-
     p_meta_dict = {}
 
     with open('dots/participant_meta.json', 'w') as p_file:
-        # Get the metadata from results
         with open("results/metadata.json", "r") as f:
             meta = json.load(f)
             for result in meta["data"][0]["studyResults"]:
@@ -31,25 +17,55 @@ def main():
         json.dump(p_meta_dict, p_file)
 
 def process_dataset(result: dict) -> None:
+    '''
+    Process the dataset for a single result
+
+    Parameters:
+        result (dict): The result dict from metadata to process
+    '''
     p_meta_dict = {}
-    # Process files for each result
     result_id = result["id"]
-    participant_id = result["urlQueryParameters"]["participant_id"]
+
+    try:
+        participant_id = result["urlQueryParameters"]["participant_id"]
+    except KeyError:
+        participant_id = "undefined"
     print(f"Participant {participant_id} with result {result_id} is being processed")
     
-    # Get the dict of bdot data
-    filename = stitch_recording(result_id, participant_id)
+    # Retrieve the path to the result data
+    path = 'results/' + result["componentResults"][0]["path"]
+
+    # Stitch the video chunks and get a filename for the new video
+    filename = stitch_recording(path, participant_id)
+
+    # Convert the video to an uncorrupted WEBM file
     convert_video(filename)
 
-    bdots, bdot_count = get_bdots(result_id, participant_id)
+    # Get the count and time stamps for the black dots
+    bdots, bdot_count = get_bdots(path, result_id, participant_id)
+
+    # Get the video chunks for the black dots
     map_bdots(participant_id, bdots, f"full_videos/{filename}.webm")
+
+    # Make frames for the black dots
     frame_count = make_frames(bdots, participant_id)
 
+    # Update the participant metadata dictionary
     p_meta_dict[participant_id] = {"dot_count" : bdot_count, "frame_count": frame_count}
 
     return p_meta_dict
 
 def make_frames(bdots: dict, pid: int) -> int:
+    '''
+    Extract frames from the black dot video chunks
+    
+    Parameters:
+        bdots (dict): The dictionary of black dots
+        pid (int): The participant ID
+    
+    Returns:
+        int: The new frame count
+    '''
     print(f"Making frames for participant {pid}")
     for bdot in bdots:
         vidcap = cv2.VideoCapture(f"dots/{pid}/bdot_{bdot}.webm")
@@ -61,8 +77,7 @@ def make_frames(bdots: dict, pid: int) -> int:
             count += 1
         os.remove(f"dots/{pid}/bdot_{bdot}.webm")
 
-        # Now remove the invalid frames
-
+        # Extract the frames in the latter part of the chunk
         valid_range = (count - 10, count - 5)
         new_count = 0
         for i in range(0, count):
@@ -78,24 +93,49 @@ def make_frames(bdots: dict, pid: int) -> int:
         
 
 def map_bdots(pid: int, bdots: dict, full_video_name: str) -> None:
+    '''
+    Extract the video chunks for the black dot timestamps
+
+    Parameters:
+        pid (int): The participant ID
+        bdots (dict): The dictionary of black dots
+        full_video_name (str): The name of the full video
+    '''
     print(f"Mapping bdots for participant {pid}")
-    video = VideoFileClip(full_video_name)
     for bdot in bdots:
-        clip = video.subclip(bdots[bdot]["time_run"] / 1000, bdots[bdot]["time_end"] / 1000)
-        clip.write_videofile(f"dots/{pid}/bdot_{bdot}.webm")
+        ffmpeg_extract_subclip(full_video_name, bdots[bdot]["time_run"] / 1000, bdots[bdot]["time_end"] / 1000,
+                                targetname=f"dots/{pid}/bdot_{bdot}.webm")
+
 
 def convert_video(filename: str) -> None:
+    '''
+    Convert the video to an uncorrupted WEBM format
+
+    Parameters:
+        filename (str): The name of the file to convert
+    '''
     print(f"Converting {filename}.webm")
     subprocess.run(["towebm", "--delete-log", f"full_videos/{filename}.webm"])
     os.remove(f"full_videos/{filename}.webm")
     os.rename(f"{filename}.webm", f"full_videos/{filename}.webm")
 
-def stitch_recording(rid: int, pid: int) -> str:
+def stitch_recording(path: str, pid: int) -> str:
+    '''
+    Read in the videos in the binary 
+    format and stitch them together
+
+    Parameters:
+        path (str): The path to the results
+        pid (int): The participant ID
+
+    Returns:
+        str: The filename of the new video
+    '''
     i = 0
     inp = b''
     while True:
         try:
-            inp1 = open(f'results/study_result_{rid}/comp-result_{rid}/files/{pid}_video_{i}.webm', 'rb').read()
+            inp1 = open(f'{path}/files/{pid}_video_{i}.webm', 'rb').read()
             inp += inp1
             i += 1
         except FileNotFoundError:
@@ -108,8 +148,19 @@ def stitch_recording(rid: int, pid: int) -> str:
 
     return filename
 
-def get_bdots(result_id: int, pid: int) -> tuple[dict, int]:
-    with open(f"results/study_result_{result_id}/comp-result_{result_id}/data.txt", "r") as f: 
+def get_bdots(path: str, result_id: int, pid: int) -> tuple[dict, int]:
+    '''
+    Get the black dot timestamps and coordinates
+
+    Parameters:
+        path (str): The path to the results
+        result_id (int): The result ID
+        pid (int): The participant ID
+    
+    Returns:
+        tuple[dict, int]: The dictionary of black dots and the count
+    '''
+    with open(f"results/{path}/data.txt", "r") as f: 
         data = json.load(f)
         row = 0
         bdot_count = 0
@@ -140,6 +191,7 @@ def get_bdots(result_id: int, pid: int) -> tuple[dict, int]:
                 row += 1
             except IndexError:
                 break
+
     os.mkdir(f"dots/{pid}")
     with open(f"dots/{pid}/dots_meta.json", "w") as f:
         json.dump(bdot_dict, f)

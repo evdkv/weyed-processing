@@ -1,5 +1,7 @@
 import tensorflow as tf
 from json import loads
+# from sklearn.model_selection import KFold
+
 #import IPython.display as display
 
 # FEATURE_DESCRIPTION = {
@@ -12,8 +14,6 @@ from json import loads
 #     'label': tf.io.FixedLenFeature([2], tf.float32)
 # }
 
-# The following functions can be used to convert a value to a type compatible
-# with tf.train.Example.
 
 def _bytes_feature(value):
     """Returns a bytes_list from a string / byte."""
@@ -45,37 +45,24 @@ def serialize_example(eye_left, eye_right, left_lm: list[list[int, int], list[in
     example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
     return example_proto.SerializeToString()
 
-# def read_tfrecord():
-#     raw_data = tf.data.TFRecordDataset('train.tfrecords')
-
-#     data = raw_data.map(_parse_fun)
-
-#     for example in data.take(1):
-#         img = example['eye_left'].numpy()
-#         display.display(display.Image(data=img))
-
-# def _parse_fun(example_proto):
-#     return tf.io.parse_single_example(example_proto, FEATURE_DESCRIPTION)
-
 def write_tfrecord():
     # Set total counters 
     train_co, test_co, valid_co, filt_out = 0, 0, 0, 0
 
     # Open the tfrecords files
-    train_writer = tf.io.TFRecordWriter('train.tfrecords')
+    train_writer = tf.io.TFRecordWriter('data.tfrecords')
     test_writer = tf.io.TFRecordWriter('test.tfrecords')
     valid_writer = tf.io.TFRecordWriter('valid.tfrecords')
 
-    with open('processed/info.json', 'r') as jsonl:
+    # kfold = KFold(n_splits=5, shuffle=False)
+
+    with open('processed/new_info.json', 'r') as jsonl:
         participant_data = loads(jsonl.read())
+        dataset = []
         for pid in participant_data:
             for example in participant_data[pid]:
-
+                
                 raw_example_line = example
-
-                # Filter out arrays with number of landmarks != 2
-                # if (len(raw_example_line['left_landmarks']) != 2 
-                #     or len(raw_example_line['right_landmarks']) != 2): filt_out += 1; continue
                 
                 # Read the images from the processed_frames folder
                 eye_left = open('processed/' + raw_example_line['file_name_left'], 'rb').read()
@@ -84,17 +71,29 @@ def write_tfrecord():
                 # Serialize a single example
                 example = serialize_example(eye_left, eye_right, raw_example_line['left_landmarks'], 
                                             raw_example_line['right_landmarks'], raw_example_line['label'])
-                
-                # Decide which sample to write to based on the split in the dataset
+                dataset.append(example)
+
                 if raw_example_line['split'] == 'train': train_writer.write(example); train_co += 1
                 elif raw_example_line['split'] == 'test': test_writer.write(example); test_co += 1
                 elif raw_example_line['split'] ==  'valid': valid_writer.write(example); valid_co += 1
-                else: print('Split not recognized')
+                else: print('Split not recognized'); filt_out += 1
 
     print('Done serializing.')
     print(f'Split totals: train: {train_co}, test: {test_co}, valid: {valid_co}')
     print(f'Total filtered out {filt_out}')
 
+    # for fold, (train_indices, val_indices) in enumerate(kfold.split(dataset)):
+    #     # Create a new TFRecordWriter for the training and validation sets
+    #     train_writer = tf.io.TFRecordWriter(f'train_{fold}.tfrecords')
+    #     val_writer = tf.io.TFRecordWriter(f'val_{fold}.tfrecords')
 
+    #     # Write the training set
+    #     for i in train_indices:
+    #         train_writer.write(dataset[i])
+
+    #     # Write the validation set
+    #     for i in val_indices:
+    #         val_writer.write(dataset[i])
+                
 if __name__ == '__main__':
     write_tfrecord()
