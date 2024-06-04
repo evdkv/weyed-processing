@@ -1,19 +1,5 @@
 import tensorflow as tf
 from json import loads
-# from sklearn.model_selection import KFold
-
-#import IPython.display as display
-
-# FEATURE_DESCRIPTION = {
-#     'eye_left': tf.io.FixedLenFeature([], tf.string),
-#     'eye_right': tf.io.FixedLenFeature([], tf.string),
-#     'l_l1': tf.io.FixedLenFeature([2], tf.int64),
-#     'l_l2': tf.io.FixedLenFeature([2], tf.int64),
-#     'r_l1': tf.io.FixedLenFeature([2], tf.int64),
-#     'r_l2': tf.io.FixedLenFeature([2], tf.int64),
-#     'label': tf.io.FixedLenFeature([2], tf.float32)
-# }
-
 
 def _bytes_feature(value):
     """Returns a bytes_list from a string / byte."""
@@ -50,11 +36,9 @@ def write_tfrecord():
     train_co, test_co, valid_co, filt_out = 0, 0, 0, 0
 
     # Open the tfrecords files
-    train_writer = tf.io.TFRecordWriter('data.tfrecords')
+    train_writer = tf.io.TFRecordWriter('train.tfrecords')
     test_writer = tf.io.TFRecordWriter('test.tfrecords')
     valid_writer = tf.io.TFRecordWriter('valid.tfrecords')
-
-    # kfold = KFold(n_splits=5, shuffle=False)
 
     with open('processed/new_info.json', 'r') as jsonl:
         participant_data = loads(jsonl.read())
@@ -81,19 +65,6 @@ def write_tfrecord():
     print('Done serializing.')
     print(f'Split totals: train: {train_co}, test: {test_co}, valid: {valid_co}')
     print(f'Total filtered out {filt_out}')
-
-    # for fold, (train_indices, val_indices) in enumerate(kfold.split(dataset)):
-    #     # Create a new TFRecordWriter for the training and validation sets
-    #     train_writer = tf.io.TFRecordWriter(f'train_{fold}.tfrecords')
-    #     val_writer = tf.io.TFRecordWriter(f'val_{fold}.tfrecords')
-
-    #     # Write the training set
-    #     for i in train_indices:
-    #         train_writer.write(dataset[i])
-
-    #     # Write the validation set
-    #     for i in val_indices:
-    #         val_writer.write(dataset[i])
                 
 if __name__ == '__main__':
     write_tfrecord()

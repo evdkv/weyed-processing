@@ -8,13 +8,14 @@ import cv2
 import mediapipe as mp
 import math
 import json, os
+import shutil
 
 def main(split: list):
     # Initialize MediaPipe Face Mesh
     mp_face_mesh = mp.solutions.face_mesh
     face_mesh = mp_face_mesh.FaceMesh()
 
-    metadict = {}
+    info_dict = {}
     cur_split = split.pop(0)
     os.mkdir('processed')
 
@@ -29,18 +30,21 @@ def main(split: list):
             with open(f'dots/{pid}/dots_meta.json', 'r') as f:
                 dot_dict = json.load(f)
 
-            metadict[pid] = []
+            info_dict[pid] = {}
 
-            print(f"Processing participant {pid}")
+            print(f"Processing participant {pid}", flush=True)
             if cur_split[0] == 0:
                 cur_split = split.pop(0)
 
+            bdot_dict = {}
             for bdot in range(0, p_meta_dict[pid]["dot_count"]):
+                
 
-                print(f"Processing bdot {bdot}")
+                print(f"Processing bdot {bdot}", flush=True)
+                frame_info = {}
                 for frame in range(0, p_meta_dict[pid]["frame_count"]):
-
-                    print(f"Processing frame {frame}")
+                    
+                    print(f"Processing frame {frame}", flush=True)
                     eye_crop_right, eye_crop_left, right_landmarks, left_landmarks = get_crops_landmarks(f"dots/{pid}/{bdot}_frame_{frame}.jpg", face_mesh)
 
                     # Ensure the crops are valid
@@ -55,16 +59,49 @@ def main(split: list):
                     cv2.imwrite(f"processed/{pid}_{bdot}_{frame}_right.jpg", eye_crop_right)
                     cv2.imwrite(f"processed/{pid}_{bdot}_{frame}_left.jpg", eye_crop_left)
 
-                    # Append the metadata to the dictionary
-                    metadict[pid].append({"file_name_right": f"{pid}_{bdot}_{frame}_right.jpg", "file_name_left": f"{pid}_{bdot}_{frame}_left.jpg",
-                                    "right_landmarks": right_landmarks, "left_landmarks": left_landmarks, "label": [dot_dict[str(bdot)]["coords"]["X"], dot_dict[str(bdot)]["coords"]["Y"]],
-                                    "split": cur_split[1]})
+                    shutil.copy(src=f"dots/{pid}/{bdot}_frame_{frame}.jpg", dst=f"processed/{pid}_{bdot}_{frame}_full.jpg")
+  
+                    img_info = {"file_name_right": f"{pid}_{bdot}_{frame}_right.jpg", 
+                                "file_name_left": f"{pid}_{bdot}_{frame}_left.jpg", 
+                                "file_name_full" : f"{pid}_{bdot}_{frame}_full.jpg",
+                                "right_landmarks": right_landmarks, 
+                                "left_landmarks": left_landmarks, 
+                                "label": [dot_dict[str(bdot)]["coords"]["X"], dot_dict[str(bdot)]["coords"]["Y"]]}
+
+                    frame_info.update({frame : img_info})
                     
-                    print(f"Processed frame {frame} for bdot {bdot} for participant {pid}")
+                    print(f"Processed frame {frame} for bdot {bdot} for participant {pid}", flush=True)
+                bdot_dict.update({bdot : frame_info})
+
+            participant_meta_dict = {}
+
+            # Get metadata from results
+            with open("results/metadata.json", "r") as mdata:
+                metadata = json.load(mdata)
+                for result in metadata["data"][0]["studyResults"]:
+                    try:
+                        test_pid = result["urlQueryParameters"]["participant_id"]
+                    except KeyError:
+                        test_pid = "undefined"
+                    if result["studyState"] == "FINISHED" and str(pid) == test_pid:
+                        with open(f"{'results' + result['componentResults'][0]['path']}/data.txt") as resdata:
+                            data = json.load(resdata)
+                            participant_meta_dict.update({"user_agent": data[0]["meta"]["userAgent"],
+                                                            "platform": data[0]["meta"]["platform"],
+                                                            "screen_width": data[0]["meta"]["screen_width"],
+                                                            "screen_height": data[0]["meta"]["screen_height"],
+                                                            "scroll_width": data[0]["meta"]["scroll_width"],
+                                                            "scroll_height": data[0]["meta"]["scroll_height"],
+                                                            "window_inner_width": data[0]["meta"]["window_innerWidth"],
+                                                            "window_inner_height": data[0]["meta"]["window_innerHeight"],
+                                                            "device_pixel_ratio": data[0]["meta"]["devicePixelRatio"]})
+            # Append the metadata to the dictionary
+            info_dict[pid].update({"meta" : participant_meta_dict, "dot_info" : bdot_dict, "split" : cur_split[1]})
+
             cur_split[0] = cur_split[0] - 1
     
-    with open('processed/info.json', 'w') as f:
-        json.dump(metadict, f)
+    with open('participant_data.json', 'w') as f:
+        json.dump(info_dict, f)
 
 
 def get_crops_landmarks(img_path: str, face_mesh: mp.solutions.face_mesh.FaceMesh = None):
@@ -89,7 +126,7 @@ def get_crops_landmarks(img_path: str, face_mesh: mp.solutions.face_mesh.FaceMes
 
     detection = results.multi_face_landmarks
     if detection is None:
-        print(f"No face detected in {img_path}")
+        print(f"No face detected in {img_path}", flush=True)
         return None, None, None, None
     for i, landmark in enumerate(detection[0].landmark):
         x = int(landmark.x * image.shape[1])
@@ -147,9 +184,7 @@ def get_crops_landmarks(img_path: str, face_mesh: mp.solutions.face_mesh.FaceMes
     eye_crop_right = image[rt0:rb1, r1:r0]
     eye_crop_left = image[lt0:lb1, l1:l0]
 
-    print(eye_crop_right.shape, eye_crop_left.shape)
-
     return eye_crop_right, eye_crop_left, [rr, rl], [lr, ll]
 
 if __name__ == "__main__":
-    main([[42, "train"], [5, "valid"], [6, "test"]])
+    main([[42, "train"], [6, "valid"], [10, "test"]])

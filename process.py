@@ -13,7 +13,8 @@ def main():
         with open("results/metadata.json", "r") as f:
             meta = json.load(f)
             for result in meta["data"][0]["studyResults"]:
-                p_meta_dict.update(process_dataset(result))
+                if result["studyState"] == "FINISHED":
+                    p_meta_dict.update(process_dataset(result))
         json.dump(p_meta_dict, p_file)
 
 def process_dataset(result: dict) -> None:
@@ -30,10 +31,10 @@ def process_dataset(result: dict) -> None:
         participant_id = result["urlQueryParameters"]["participant_id"]
     except KeyError:
         participant_id = "undefined"
-    print(f"Participant {participant_id} with result {result_id} is being processed")
+    print(f"Participant {participant_id} with result {result_id} is being processed", flush=True)
     
     # Retrieve the path to the result data
-    path = 'results/' + result["componentResults"][0]["path"]
+    path = 'results' + result["componentResults"][0]["path"]
 
     # Stitch the video chunks and get a filename for the new video
     filename = stitch_recording(path, participant_id)
@@ -66,7 +67,7 @@ def make_frames(bdots: dict, pid: int) -> int:
     Returns:
         int: The new frame count
     '''
-    print(f"Making frames for participant {pid}")
+    print(f"Making frames for participant {pid}", flush=True)
     for bdot in bdots:
         vidcap = cv2.VideoCapture(f"dots/{pid}/bdot_{bdot}.webm")
         success, image = vidcap.read()
@@ -82,10 +83,10 @@ def make_frames(bdots: dict, pid: int) -> int:
         new_count = 0
         for i in range(0, count):
             if i < valid_range[0] or i > valid_range[1]:
-                print(f"Removing frame {i}")
+                print(f"Removing frame {i}", flush=True)
                 os.remove(f"dots/{pid}/{bdot}_frame_{i}.jpg")
             else:
-                print(f"Renaming frame {i} to {new_count}")
+                print(f"Renaming frame {i} to {new_count}", flush=True)
                 os.rename(f"dots/{pid}/{bdot}_frame_{i}.jpg", f"dots/{pid}/{bdot}_frame_{new_count}.jpg")
                 new_count += 1
 
@@ -101,7 +102,7 @@ def map_bdots(pid: int, bdots: dict, full_video_name: str) -> None:
         bdots (dict): The dictionary of black dots
         full_video_name (str): The name of the full video
     '''
-    print(f"Mapping bdots for participant {pid}")
+    print(f"Mapping bdots for participant {pid}", flush=True)
     for bdot in bdots:
         ffmpeg_extract_subclip(full_video_name, bdots[bdot]["time_run"] / 1000, bdots[bdot]["time_end"] / 1000,
                                 targetname=f"dots/{pid}/bdot_{bdot}.webm")
@@ -114,7 +115,7 @@ def convert_video(filename: str) -> None:
     Parameters:
         filename (str): The name of the file to convert
     '''
-    print(f"Converting {filename}.webm")
+    print(f"Converting {filename}.webm", flush=True)
     subprocess.run(["towebm", "--delete-log", f"full_videos/{filename}.webm"])
     os.remove(f"full_videos/{filename}.webm")
     os.rename(f"{filename}.webm", f"full_videos/{filename}.webm")
@@ -160,7 +161,7 @@ def get_bdots(path: str, result_id: int, pid: int) -> tuple[dict, int]:
     Returns:
         tuple[dict, int]: The dictionary of black dots and the count
     '''
-    with open(f"results/{path}/data.txt", "r") as f: 
+    with open(f"{path}/data.txt", "r") as f: 
         data = json.load(f)
         row = 0
         bdot_count = 0
