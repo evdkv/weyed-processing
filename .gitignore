@@ -168,3 +168,4 @@ external/
 .DS_Store
 dataset/
 ds/
+slurm_scripts/
